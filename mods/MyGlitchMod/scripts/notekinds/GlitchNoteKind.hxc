@@ -1,0 +1,137 @@
+import funkin.play.notes.notekind.NoteKind;
+import funkin.play.PlayState;
+import flixel.FlxG;
+import flixel.util.FlxTimer;
+import flixel.addons.display.FlxRuntimeShader;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
+
+/**
+ * Glitch Note - A custom note type that applies rapid glitch and invert shader effects
+ * to the opponent character when hit.
+ *
+ * This is a port of the Psych Engine Lua script behavior to V-Slice HScript.
+ *
+ * Usage: In the chart editor, set a note's kind to "Glitch Note"
+ */
+class GlitchNoteKind extends NoteKind
+{
+  // Shader instances
+  var glitchShader:FlxRuntimeShader;
+  var invertShader:FlxRuntimeShader;
+
+  // Track current loop iteration for shader toggling
+  var currentLoop:Int = 0;
+
+  function new()
+  {
+    // Register this note kind with the name "Glitch Note"
+    super("Glitch Note", "Applies rapid glitch/invert effects to opponent on hit");
+
+    // Pre-create shaders
+    initShaders();
+  }
+
+  function initShaders():Void
+  {
+    // Create the glitch shader from our mod's shader file
+    var glitchFragCode = "
+      #pragma header
+      void main() {
+        vec2 uv = openfl_TextureCoordv;
+        float offset = 0.015 * sin(uv.y * 50.0);
+        float r = flixel_texture2D(bitmap, vec2(uv.x + offset, uv.y)).r;
+        float g = flixel_texture2D(bitmap, vec2(uv.x, uv.y)).g;
+        float b = flixel_texture2D(bitmap, vec2(uv.x - offset, uv.y)).b;
+        float a = flixel_texture2D(bitmap, uv).a;
+        float scanline = sin(uv.y * 800.0) * 0.04;
+        vec3 color = vec3(r, g, b) - scanline;
+        gl_FragColor = vec4(color, a);
+      }
+    ";
+
+    var invertFragCode = "
+      #pragma header
+      void main() {
+        vec4 color = flixel_texture2D(bitmap, openfl_TextureCoordv);
+        if (color.a > 0.0) {
+          color.r = 1.0 - color.r;
+          color.g = 1.0 - color.g;
+          color.b = 1.0 - color.b;
+        }
+        gl_FragColor = color;
+      }
+    ";
+
+    glitchShader = new FlxRuntimeShader(glitchFragCode);
+    invertShader = new FlxRuntimeShader(invertFragCode);
+  }
+
+  /**
+   * Called when a note of this kind is hit.
+   * Only triggers the effect for opponent notes (not player notes).
+   */
+  override function onNoteHit(event:HitNoteScriptEvent):Void
+  {
+    super.onNoteHit(event);
+
+    // Only trigger for opponent notes (getMustHitNote returns false for opponent)
+    if (event.note.noteData.getMustHitNote()) return;
+
+    // Get the opponent character
+    var opponent = PlayState.instance.currentStage.getOpponent();
+    if (opponent == null) return;
+
+    // 1. Camera & HUD Shake effect
+    doCameraEffects();
+
+    // 2. Start the chaotic shader loop (20 iterations, 0.01 seconds each)
+    currentLoop = 0;
+    startGlitchLoop(opponent);
+  }
+
+  function doCameraEffects():Void
+  {
+    // Add camera zoom
+    if (PlayState.instance.camGame != null)
+    {
+      PlayState.instance.camGame.zoom += 0.03;
+    }
+
+    // Shake and tilt the HUD camera
+    if (PlayState.instance.camHUD != null)
+    {
+      PlayState.instance.camHUD.angle = 3;
+      FlxTween.tween(PlayState.instance.camHUD, {angle: 0}, 0.1, {ease: FlxEase.linear});
+    }
+  }
+
+  function startGlitchLoop(opponent:Dynamic):Void
+  {
+    // Use FlxTimer to create 20 rapid shader toggles (like Psych Engine's runTimer)
+    new FlxTimer().start(0.01, function(timer:FlxTimer) {
+      var loopsLeft = 20 - timer.elapsedLoops;
+
+      // Toggle between shaders based on whether loopsLeft is even or odd
+      if (loopsLeft % 2 == 0)
+      {
+        // Apply invert shader
+        opponent.shader = invertShader;
+      }
+      else
+      {
+        // Apply glitch shader
+        opponent.shader = glitchShader;
+      }
+
+      // On the last loop, schedule shader removal
+      if (timer.elapsedLoops >= 20)
+      {
+        // Remove shader after the loop completes
+        new FlxTimer().start(0.05, function(tmr:FlxTimer) {
+          opponent.shader = null;
+        });
+      }
+    }, 20);
+  }
+}
