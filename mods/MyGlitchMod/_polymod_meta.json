@@ -1,0 +1,12 @@
+{
+  "title": "Glitch Note Effect Mod",
+  "description": "Adds a 'Glitch Note' custom note type that applies rapid glitch and invert shader effects to the opponent when hit.",
+  "contributors": [
+    {
+      "name": "V-Slice Modder"
+    }
+  ],
+  "api_version": "0.8.0",
+  "mod_version": "1.0.0",
+  "license": "MIT"
+}
